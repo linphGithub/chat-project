@@ -35,7 +35,7 @@ class Wechat{
       request
       request-promise-native 返回值是一个promise对象
     */
-   new Promise((resolve,reject)=>{
+   return new Promise((resolve,reject)=>{
     rp({method:"get",url,json:true}).then((res=>{
         /* 
           { 
@@ -59,11 +59,80 @@ class Wechat{
 
   */
   saveAccessToken(accessToken){
-    writeFile('./accessToken.txt')
+    //将对象转成json字符串
+    accessToken=JSON.stringify(accessToken)
+    return new Promise((resolve,reject)=>{
+      writeFile('./accessToken.txt',accessToken,err=>{
+        if(!err){
+          console.log('文件保存成功')
+          resolve()
+        }else{
+          reject('saveAccessToken报错'+err)
+        }
+      })
+    })
+    
+  }
+
+  readAccessToken(){
+    //读取本地文件中的access_token
+    return new Promise((resolve,reject)=>{
+      readFile('./accessToken.txt',(err,data)=>{
+        if(!err){
+          resolve(JSON.parse(data))
+        }else{
+          reject('readAccessToken报错'+err)
+        }
+      })
+    })
+  }
+
+  isValidAccessToken(data){
+    //判断access_token是否有效
+    //检测传入参数是否有效
+    if(!data && data.access_token && !data.expires_in){
+      return false
+    }
+    return data.expires_in>Date.now()
+  }
+  /* 
+    获取没有过期的accessToken
+  */
+  fetchAccessToken(){
+    if(this.access_token &&this.expires_in &&this.isValidAccessToken(this)){
+      //说明之前保存过access_token 并且是有效的，直接使用
+      return Promise.resolve({
+        access_token:this.access_token,
+        expires_in:this.expires_in
+      })
+    }
+    
+    return this.readAccessToken().then(async res=>{
+        //本地有文件
+        if(this.isValidAccessToken(res)){
+          return Promise.resolve(res)
+        }else{
+          const res=await this.getAccessToken()
+          await this.saveAccessToken(res)
+          return Promise.resolve(res)
+        }
+      }).catch(async err=>{
+        //本地没有文件
+        const res=await this.getAccessToken()
+        await this.saveAccessToken(res)
+        return Promise.resolve(res)
+      }).then(res=>{
+        this.access_token=res.access_token
+        this.expires_in=res.expires_in
+        //是this.readAccessToken最终的返回值
+        return Promise.resolve(res)
+      })
+
   }
 }
 
 
 //模拟测试
 const w=new Wechat()
-w.getAccessToken()
+w.fetchAccessToken()
+
